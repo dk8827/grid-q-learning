@@ -60,7 +60,7 @@ pygame.init()
 screen_size = 400  # Screen size in pixels
 cell_width = screen_size // NUM_COLS  # Width of each cell in the grid
 cell_height = screen_size // NUM_ROWS  # Height of each cell in the grid
-screen = pygame.display.set_mode((screen_size, screen_size + 50))  # Set up the display with extra space for UI
+screen = pygame.display.set_mode((screen_size, screen_size + 100))  # Set up the display with extra space for UI
 pygame.display.set_caption("Q-learning Grid with Landmines")  # Set the window title
 
 # Define colors
@@ -74,7 +74,9 @@ YELLOW = (255, 255, 0)
 # Q-learning parameters
 alpha = 0.1  # Learning rate
 gamma = 0.9  # Discount factor
-epsilon = 0.3  # Exploration rate
+initial_epsilon = 1.0  # Initial exploration rate
+min_epsilon = 0.01  # Minimum exploration rate
+epsilon_decay = 0.915  # Exponential decay factor per episode (reaches 0.7 at episode 4)
 num_episodes = 1000  # Number of episodes for training
 
 font = pygame.font.Font(None, 24)  # Set the font for displaying text
@@ -117,14 +119,17 @@ class Dropdown:
 
 # Create a button for starting the simulation
 class Button:
-    def __init__(self, x, y, w, h, text):
+    def __init__(self, x, y, w, h, text, selected=False):
         self.rect = pygame.Rect(x, y, w, h)
         self.text = text
+        self.selected = selected
 
     def draw(self, surface):
-        pygame.draw.rect(surface, WHITE, self.rect)
+        bg_color = BLUE if self.selected else WHITE
+        pygame.draw.rect(surface, bg_color, self.rect)
         pygame.draw.rect(surface, BLACK, self.rect, 2)
-        text = font.render(self.text, True, BLACK)
+        text_color = WHITE if self.selected else BLACK
+        text = font.render(self.text, True, text_color)
         text_rect = text.get_rect(center=self.rect.center)
         surface.blit(text, text_rect)
 
@@ -134,14 +139,21 @@ class Button:
                 return True
         return False
 
+
 # Create UI elements
 landmine_dropdown = Dropdown(10, screen_size/2, 100, 30, [0, 1, 2, 3, 4])
 start_button = Button(120, screen_size/2, 100, 30, "Start")
+speed_1x_button = Button(10, screen_size + 60, 60, 30, "1x", selected=True)
+speed_5x_button = Button(80, screen_size + 60, 60, 30, "5x")
+speed_20x_button = Button(150, screen_size + 60, 60, 30, "20x")
+speed_multiplier = 1  # Default to 1x speed
+base_sleep_time = 0.5  # Base sleep time in seconds for 1x speed
 
 # Main game loop
 running = True
 simulation_started = False
 env = None
+epsilon = initial_epsilon  # Initialize epsilon
 
 # Create a surface for the episode counter
 episode_surface = pygame.Surface((screen_size, 50))
@@ -158,16 +170,22 @@ while running:
                 simulation_started = True
                 env = GridEnvironment(landmine_dropdown.selected)
                 q_table = np.zeros((NUM_ROWS, NUM_COLS, 4))  # Reset Q-table for new simulation
+                epsilon = initial_epsilon  # Reset epsilon for new simulation
 
     screen.fill(WHITE)
 
     if not simulation_started:
+        landmine_label = font.render("Number of landmines:", True, BLACK)
+        screen.blit(landmine_label, (10, screen_size/2 - 25))
         landmine_dropdown.draw(screen)
         landmine_dropdown.draw_options(screen)
         start_button.draw(screen)
     else:
         # Q-learning algorithm with Pygame visualization
         for episode in range(num_episodes):
+            # Decay epsilon exponentially (faster decay)
+            epsilon = max(min_epsilon, epsilon * epsilon_decay)
+            
             state = env.reset()  # Reset the environment for each episode
             done = False
 
@@ -177,6 +195,21 @@ while running:
                         running = False
                         done = True
                         break
+                    if speed_1x_button.handle_event(event):
+                        speed_1x_button.selected = True
+                        speed_5x_button.selected = False
+                        speed_20x_button.selected = False
+                        speed_multiplier = 1
+                    elif speed_5x_button.handle_event(event):
+                        speed_1x_button.selected = False
+                        speed_5x_button.selected = True
+                        speed_20x_button.selected = False
+                        speed_multiplier = 5
+                    elif speed_20x_button.handle_event(event):
+                        speed_1x_button.selected = False
+                        speed_5x_button.selected = False
+                        speed_20x_button.selected = True
+                        speed_multiplier = 20
 
                 if not running:
                     break
@@ -235,14 +268,20 @@ while running:
                         if (i, j) == state:
                             pygame.draw.circle(screen, BLUE, (j * cell_width + cell_width // 2, i * cell_height + cell_height // 2), cell_width // 4)
 
-                # Clear the episode surface and redraw the episode number
+                # Clear the episode surface and redraw the episode number and epsilon
                 episode_surface.fill(WHITE)
                 episode_text = font.render(f"Episode: {episode + 1}/{num_episodes}", True, BLACK)
                 episode_surface.blit(episode_text, (10, 10))
+                epsilon_text = font.render(f"Epsilon: {epsilon:.2f}", True, BLACK)
+                episode_surface.blit(epsilon_text, (10, 30))
                 screen.blit(episode_surface, (0, screen_size))
+                
+                speed_1x_button.draw(screen)
+                speed_5x_button.draw(screen)
+                speed_20x_button.draw(screen)
 
                 pygame.display.flip()
-                #time.sleep(0.01)  # Uncomment to slow down the visualization
+                time.sleep(base_sleep_time / speed_multiplier)
 
             if not running:
                 break
