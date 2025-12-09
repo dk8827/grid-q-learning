@@ -231,10 +231,24 @@ while running:
                 state = next_state  # Move to the next state
 
                 def get_color(value, min_value, max_value):
-                    if min_value == max_value:
-                        return (255, 255, 255)  # White if all values are the same
-                    normalized = (value - min_value) / (max_value - min_value)
-                    return (int(255 * (1 - normalized)), int(255 * normalized), 0)
+                    threshold = 0.01  # Values within this range of 0 are considered neutral (white)
+                    if abs(value) < threshold:
+                        return (255, 255, 255)  # White for neutral values near 0
+                    
+                    max_abs = max(abs(min_value), abs(max_value))
+                    if max_abs < threshold:
+                        return (255, 255, 255)  # White if all values are near zero
+                    
+                    normalized = value / max_abs  # Normalize relative to zero
+                    
+                    if normalized > 0:
+                        # Positive values: white to green
+                        intensity = min(1.0, normalized)
+                        return (int(255 * (1 - intensity)), 255, int(255 * (1 - intensity)))
+                    else:
+                        # Negative values: white to red
+                        intensity = min(1.0, abs(normalized))
+                        return (255, int(255 * (1 - intensity)), int(255 * (1 - intensity)))
 
                 # Find the min and max Q-values across the entire grid
                 min_q = np.min(q_table)
